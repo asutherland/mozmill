@@ -1,26 +1,26 @@
 // ***** BEGIN LICENSE BLOCK *****// ***** BEGIN LICENSE BLOCK *****
 // Version: MPL 1.1/GPL 2.0/LGPL 2.1
-// 
+//
 // The contents of this file are subject to the Mozilla Public License Version
 // 1.1 (the "License"); you may not use this file except in compliance with
 // the License. You may obtain a copy of the License at
 // http://www.mozilla.org/MPL/
-// 
+//
 // Software distributed under the License is distributed on an "AS IS" basis,
 // WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
 // for the specific language governing rights and limitations under the
 // License.
-// 
+//
 // The Original Code is Mozilla Corporation Code.
-// 
+//
 // The Initial Developer of the Original Code is
 // Mikeal Rogers.
 // Portions created by the Initial Developer are Copyright (C) 2008
 // the Initial Developer. All Rights Reserved.
-// 
+//
 // Contributor(s):
 //  Mikeal Rogers <mikeal.rogers@gmail.com>
-// 
+//
 // Alternatively, the contents of this file may be used under the terms of
 // either the GNU General Public License Version 2 or later (the "GPL"), or
 // the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
@@ -32,10 +32,10 @@
 // and other provisions required by the GPL or the LGPL. If you do not delete
 // the provisions above, a recipient may use your version of this file under
 // the terms of any one of the MPL, the GPL or the LGPL.
-// 
+//
 // ***** END LICENSE BLOCK *****
 
-var EXPORTED_SYMBOLS = ['loadFile','register_function','Collector','Runner','events', 
+var EXPORTED_SYMBOLS = ['loadFile','register_function','Collector','Runner','events',
                         'jsbridge', 'runTestDirectory', 'runTestFile', 'log', 'getThread',
                         'timers', 'persisted'];
 
@@ -52,7 +52,7 @@ var ios = Components.classes["@mozilla.org/network/io-service;1"]
 var loader = Components.classes["@mozilla.org/moz/jssubscript-loader;1"]
                     .getService(Components.interfaces.mozIJSSubScriptLoader);
 var uuidgen = Components.classes["@mozilla.org/uuid-generator;1"]
-                    .getService(Components.interfaces.nsIUUIDGenerator);  
+                    .getService(Components.interfaces.nsIUUIDGenerator);
 
 var backstage = this;
 
@@ -84,7 +84,7 @@ var loadFile = function(path, collector) {
   file.initWithPath(path);
   var uri = ios.newFileURI(file).spec;
 
-  var module = {};  
+  var module = {};
   module.registeredFunctions = registeredFunctions;
   module.collector = collector
   loadTestResources();
@@ -103,7 +103,7 @@ var loadFile = function(path, collector) {
   } catch(e) {
     Components.utils.reportError(e);
   }
-  
+
   module.__file__ = path;
   module.__uri__ = uri;
   return module;
@@ -118,7 +118,7 @@ function stateChangeBase (possibilties, restrictions, target, cmeta, v) {
     if (!arrays.inArray(possibilties, v)) {
       // TODO Error value not in this.poss
       return;
-    } 
+    }
   }
   if (restrictions) {
     for (i in restrictions) {
@@ -143,8 +143,8 @@ var events = {
   'listeners'    : {},
 }
 events.setState = function (v) {
-   return stateChangeBase(['dependencies', 'setupModule', 'teardownModule', 
-                           'setupTest', 'teardownTest', 'test', 'collection'], 
+   return stateChangeBase(['dependencies', 'setupModule', 'teardownModule',
+                           'setupTest', 'teardownTest', 'test', 'collection'],
                            null, 'currentState', 'setState', v);
 }
 events.setTest = function (test, invokedFromIDE) {
@@ -159,8 +159,8 @@ events.setTest = function (test, invokedFromIDE) {
 }
 events.endTest = function (test) {
   test.status = 'done';
-  events.currentTest = null; 
-  var obj = {'filename':events.currentModule.__file__, 
+  events.currentTest = null;
+  var obj = {'filename':events.currentModule.__file__,
          'passed':test.__passes__.length,
          'failed':test.__fails__.length,
          'passes':test.__passes__,
@@ -177,7 +177,7 @@ events.endTest = function (test) {
   events.fireEvent('endTest', obj);
 }
 events.setModule = function (v) {
-  return stateChangeBase( null, [function (v) {return (v.__file__ != undefined)}], 
+  return stateChangeBase( null, [function (v) {return (v.__file__ != undefined)}],
                           'currentModule', 'setModule', v);
 }
 events.pass = function (obj) {
@@ -295,9 +295,9 @@ Collector.prototype.startHttpd = function () {
     } catch(e) { // Failure most likely due to port conflict
       this.http_port++;
       http_server = httpd.getServer(this.http_port);
-    }; 
-    
-    
+    };
+
+
   }
 }
 Collector.prototype.stopHttpd = function () {
@@ -341,7 +341,7 @@ Collector.prototype.initTestModule = function (filename) {
         test_module[i].__name__ = i;
         test_module.__tests__.push(test_module[i]);
       }
-    } else if (typeof(test_module[i]) == 'object' && 
+    } else if (typeof(test_module[i]) == 'object' &&
                test_module[i]._mozmillasynctest == true) {
         test_module[i].__name__ = i;
         test_module.__tests__.push(test_module[i]);
@@ -358,13 +358,7 @@ Collector.prototype.initTestModule = function (filename) {
       this.test_modules_by_name[test_module[i]] = test_module;
     }
   }
-  
-  if (test_module.MODULE_REQUIRES != undefined && test_module.RELATIVE_ROOT == undefined) {
-    for each(t in test_module.__tests__) {
-      t.__force_skip__ = "RELATIVE ROOT is not defined and test requires another module.";
-    }
-  }
-  
+
   test_module.collector = this;
   test_module.status = 'loaded';
   this.test_modules_by_filename[filename] = test_module;
@@ -377,12 +371,12 @@ Collector.prototype.initTestDirectory = function (directory) {
     var dfiles = os.listDirectory(dfile);
     for (i in dfiles) {
       var f = dfiles[i];
-      if ( f.isDirectory() && 
-           !withs.startsWith(f.leafName, '.') && 
+      if ( f.isDirectory() &&
+           !withs.startsWith(f.leafName, '.') &&
            withs.startsWith(f.leafName, "test") &&
            !arrays.inArray(r.loaded_directories, f.path) ) {
         recursiveModuleLoader(os.getFileForPath(f.path));
-      } else if ( withs.startsWith(f.leafName, "test") && 
+      } else if ( withs.startsWith(f.leafName, "test") &&
                   withs.endsWith(f.leafName, ".js")    &&
                   !arrays.inArray(r.test_modules_by_filename, f.path) ) {
         r.initTestModule(f.path);
@@ -391,20 +385,26 @@ Collector.prototype.initTestDirectory = function (directory) {
     }
   }
   recursiveModuleLoader(os.getFileForPath(directory));
-}
+};
 
-function Runner (collector, invokedFromIDE) {
+function Runner (collector, invokedFromIDE, libdirs) {
   this.collector = collector;
-  this.invokedFromIDE = invokedFromIDE
+  this.invokedFromIDE = invokedFromIDE;
   events.fireEvent('startRunner', true);
   // var logging = {}; Components.utils.import('resource://mozmill/stdlib/logging.js', logging);
   // this.logger = new logging.Logger('Runner');
   var m = {}; Components.utils.import('resource://mozmill/modules/mozmill.js', m);
   this.platform = m.platform;
+
+  if (libdirs) {
+    for (let [, libdir] in Iterator(libdirs)) {
+      this.collector.initTestDirectory(libdir);
+    }
+  }
 }
 Runner.prototype.runTestDirectory = function (directory) {
   this.collector.initTestDirectory(directory);
-  
+
   for (i in this.collector.test_modules_by_filename) {
     var test = this.collector.test_modules_by_filename[i];
     if (test.status != 'done') {
@@ -485,17 +485,17 @@ Runner.prototype._runTestModule = function (module) {
       module[req] = this.collector.getModule(req);
     }
   }
-  
+
   var attrs = [];
   for (i in module) {
     attrs.push(i);
   }
   events.setModule(module);
   module.__status__ = 'running';
-  if (module.__setupModule__) { 
+  if (module.__setupModule__) {
     events.setState('setupModule');
     events.setTest(module.__setupModule__);
-    this.wrapper(module.__setupModule__, module); 
+    this.wrapper(module.__setupModule__, module);
     var setupModulePassed = (events.currentTest.__fails__.length == 0 && !events.currentTest.skipped);
     events.endTest(module.__setupModule__);
   } else {
@@ -505,16 +505,16 @@ Runner.prototype._runTestModule = function (module) {
     for (i in module.__tests__) {
       var test = module.__tests__[i];
       test.registeredFunctions = registeredFunctions;
-      if (module.__setupTest__) { 
+      if (module.__setupTest__) {
         events.setState('setupTest');
         events.setTest(module.__setupTest__);
-        this.wrapper(module.__setupTest__, test); 
+        this.wrapper(module.__setupTest__, test);
         var setupTestPassed = (events.currentTest.__fails__.length == 0 && !events.currentTest.skipped);
         events.endTest(module.__setupTest__);
       } else {
         var setupTestPassed = true;
-      }  
-      events.setState('test'); 
+      }
+      events.setState('test');
       events.setTest(test, this.invokedFromIDE);
       if (setupTestPassed) {
         this.wrapper(test);
@@ -522,9 +522,9 @@ Runner.prototype._runTestModule = function (module) {
         events.skip("setupTest failed.");
       }
       if (module.__teardownTest__) {
-        events.setState('teardownTest'); 
+        events.setState('teardownTest');
         events.setTest(module.__teardownTest__);
-        this.wrapper(module.__teardownTest__, test); 
+        this.wrapper(module.__teardownTest__, test);
         events.endTest(module.__teardownTest__);
         }
       events.endTest(test)
@@ -563,19 +563,19 @@ Runner.prototype.runTestModule = function (module) {
 }
 
 
-var runTestDirectory = function (dir, invokedFromIDE) {
-  var runner = new Runner(new Collector(), invokedFromIDE);
+var runTestDirectory = function (dir, invokedFromIDE, libdirs) {
+  var runner = new Runner(new Collector(), invokedFromIDE, libdirs);
   runner.runTestDirectory(dir);
   runner.end();
   return true;
-}
-var runTestFile = function (filename, invokedFromIDE) {
-  var runner = new Runner(new Collector(), invokedFromIDE);
+};
+var runTestFile = function (filename, invokedFromIDE, libdirs) {
+  var runner = new Runner(new Collector(), invokedFromIDE, libdirs);
   runner.runTestFile(filename);
   runner.end();
   return true;
-}
+};
 
 var getThread = function () {
   return thread;
-}
+};

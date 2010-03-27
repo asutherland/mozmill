@@ -105,10 +105,13 @@ class TestsFailedException(Exception):
 class MozMill(object):
 
     def __init__(self, runner_class=mozrunner.FirefoxRunner, 
-                 profile_class=mozrunner.FirefoxProfile, jsbridge_port=24242):
+                 profile_class=mozrunner.FirefoxProfile,
+                 jsbridge_port=24242,
+                 libdirs=()):
         self.runner_class = runner_class
         self.profile_class = profile_class
         self.jsbridge_port = jsbridge_port
+        self.libdirs = libdirs
 
         self.passes = [] ; self.fails = [] ; self.skipped = []
         self.alltests = []
@@ -194,9 +197,9 @@ class MozMill(object):
         frame.persisted = self.persisted
 
         if os.path.isdir(test):
-            frame.runTestDirectory(test)
+            frame.runTestDirectory(test, False, self.libdirs)
         else:
-            frame.runTestFile(test)
+            frame.runTestFile(test, False, self.libdirs)
 
         endtime = datetime.utcnow().isoformat()
 
@@ -471,6 +474,10 @@ class CLI(jsbridge.CLI):
     parser_options[("--show-errors",)] = dict(dest="showerrors", default=False, 
                                               action="store_true",
                                               help="Print logger errors to the console.")
+    parser_options[('--libdir',)] = dict(
+        dest="libdirs",
+        action="append",
+        help="Add a path to be processed for shared modules.")
     parser_options[("--report",)] = dict(dest="report", default=False,
                                          help="Report the results. Requires url to results server.")
     parser_options[("--showall",)] = dict(dest="showall", default=False, action="store_true",
