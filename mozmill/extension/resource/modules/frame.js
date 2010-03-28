@@ -134,12 +134,20 @@ function stateChangeBase (possibilties, restrictions, target, cmeta, v) {
   events.fireEvent(cmeta, target);
 }
 
-timers = [];
+var timers = [];
 
 var events = {
   'currentState' : null,
   'currentModule': null,
   'currentTest'  : null,
+  /**
+   * Metadata from the test driver that we provide to the  __failure_handlers__
+   * so they can moderate how much processing they perform or data they send
+   * back to us.
+   *
+   * This value is directly clobbered by the mozmill driver.
+   */
+  reportingConfig: {},
   'listeners'    : {},
 }
 events.setState = function (v) {
@@ -192,18 +200,38 @@ events.pass = function (obj) {
   }
   events.fireEvent('pass', obj);
 }
+/**
+ * Process a failure event.  If the module has any registered failure handlers
+ * then they are invoked and given the chance to add additional information to
+ * the failure object.
+ */
 events.fail = function (obj) {
+  if (events.currentModule) {
+    for each (let [, failureHandler] in
+              Iterator(events.currentModule.__failure_handlers__)) {
+      try {
+        failureHandler(events.currentModule, events.currentTest, obj,
+                       events.reportingConfig);
+      }
+      catch (ex) {
+        dump("FAILURE IN FAILURE HANDLER " + ex.fileName + ":" + ex.lineNumber +
+             ": " + ex + "\n");
+      }
+    }
+  }
   if (events.currentTest) {
     events.currentTest.__fails__.push(obj);
   }
-  for each(time in timers) {
-    timer.actions.push(
-      {"currentTest":events.currentModule.__file__+"::"+events.currentTest.__name__, "obj":obj,
-       "result":"fail"}
-    );
+  for each (var time in timers) {
+    timer.actions.push({
+      currentTest: events.currentModule.__file__+ "::" +
+                     events.currentTest.__name__,
+      obj: obj,
+      result: "fail"
+    });
   }
   events.fireEvent('fail', obj);
-}
+};
 events.skip = function (reason) {
   events.currentTest.skipped = true;
   events.currentTest.skipped_reason = reason;
@@ -320,6 +348,12 @@ Collector.prototype.addHttpResource = function (directory, ns) {
 Collector.prototype.initTestModule = function (filename) {
   var test_module = loadFile(filename, this);
   test_module.__tests__ = [];
+  /**
+   * A list of functions with signatures of the form:
+   *  function(aModule, aTest, aErrorObject, aReportingConfig)
+   * and add data to aErrorObject that is useful to report.
+   */
+  test_module.__failure_handlers__ = [];
   for (i in test_module) {
     if (test_module[i] == null) {
       // do nothing
@@ -442,8 +476,28 @@ Runner.prototype.getDependencies = function (module) {
     }
   }
   return alldeps;
-}
+};
+/**
+ * Conditionally invoke functions based on decorations and reporting errors
+ * as expressed by caught exceptions.
+ *
+ * Conditional invocation guards:
+ * - If the function has an "EXCLUDED_PLATFORMS" list attribute and the current
+ *   platform (one of "darwin", "winnt", "linux") is in the list, then the
+ *   function is not invoked.
+ * - If the function has a "__force_skip__" attribute, presumably set by mozmill
+ *   code elsewhere, the function is not invoked.
+ *
+ * Special function handling:
+ * - Asynchronous tests (objects with a "run" method and an "_mozmillasynctest"
+ *   attribute that tags them as async) have their run method invoked.
+ *
+ * Error reporting:
+ * - Caught exceptions are reported to the "events" object in this module and
+ *   also reported to the JS error console via C.u.reportError.
+ */
 Runner.prototype.wrapper = function (func, arg) {
+  // getThread() wants this variable; the original rationale is unclear.
   thread = Components.classes["@mozilla.org/thread-manager;1"]
                      .getService(Components.interfaces.nsIThreadManager)
                      .currentThread;
@@ -472,31 +526,29 @@ Runner.prototype.wrapper = function (func, arg) {
     if (func._mozmillasynctest == true) {
       func = {'filename':events.currentModule.__file__,
                  'name':func.__name__,
-                }
+                };
     }
-    events.fail({'exception':e, 'test':func})
+    events.fail({'exception':e, 'test':func});
     Components.utils.reportError(e);
   }
-}
+};
 
 Runner.prototype._runTestModule = function (module) {
-  if (module.__requirements__ != undefined && module.__force_skip__ == undefined) {
+  if (module.__requirements__ != undefined &&
+      module.__force_skip__ == undefined) {
     for each(req in module.__requirements__) {
       module[req] = this.collector.getModule(req);
     }
   }
 
-  var attrs = [];
-  for (i in module) {
-    attrs.push(i);
-  }
   events.setModule(module);
   module.__status__ = 'running';
   if (module.__setupModule__) {
     events.setState('setupModule');
     events.setTest(module.__setupModule__);
     this.wrapper(module.__setupModule__, module);
-    var setupModulePassed = (events.currentTest.__fails__.length == 0 && !events.currentTest.skipped);
+    var setupModulePassed = (events.currentTest.__fails__.length == 0 &&
+                             !events.currentTest.skipped);
     events.endTest(module.__setupModule__);
   } else {
     var setupModulePassed = true;
@@ -509,7 +561,8 @@ Runner.prototype._runTestModule = function (module) {
         events.setState('setupTest');
         events.setTest(module.__setupTest__);
         this.wrapper(module.__setupTest__, test);
-        var setupTestPassed = (events.currentTest.__fails__.length == 0 && !events.currentTest.skipped);
+        var setupTestPassed = (events.currentTest.__fails__.length == 0 &&
+                               !events.currentTest.skipped);
         events.endTest(module.__setupTest__);
       } else {
         var setupTestPassed = true;
@@ -576,6 +629,13 @@ var runTestFile = function (filename, invokedFromIDE, libdirs) {
   return true;
 };
 
+var thread;
+/**
+ * This apparently exposes the thread the currently executing test is running
+ * on.  The value is maintained by the Runner.wrapper helper method.  From a
+ * mozilla platform perspective, if this is not the main thread then something
+ * is deeply wrong.
+ */
 var getThread = function () {
   return thread;
 };

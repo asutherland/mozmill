@@ -81,16 +81,23 @@ class ZombieDetector(object):
         self.doomsdayTimer = threading.Timer(1800, self.stopfunction)
         self.doomsdayTimer.start()
 
+# Maximum number of characters of object representation to dump.
+LOG_OBJ_LIMIT = 256
+
 class LoggerListener(object):
     cases = {
-        'mozmill.pass':   lambda obj: logger.debug('Test Pass: '+repr(obj)),
-        'mozmill.fail':   lambda obj: logger.error('Test Failure: '+repr(obj)),
-        'mozmill.skip':   lambda obj: logger.info('Test Skipped: ' +repr(obj))
+        'mozmill.pass':   lambda obj: logger.debug('Test Pass: '+
+                                                   repr(obj)[:LOG_OBJ_LIMIT]),
+        'mozmill.fail':   lambda obj: logger.error('Test Failure: '+
+                                                   repr(obj)[:LOG_OBJ_LIMIT]),
+        'mozmill.skip':   lambda obj: logger.info('Test Skipped: ' +
+                                                  repr(obj)[:LOG_OBJ_LIMIT])
     }
     
     class default(object):
         def __init__(self, eName): self.eName = eName
-        def __call__(self, obj): logger.info(self.eName+' :: '+repr(obj))
+        def __call__(self, obj): logger.info(self.eName+' :: '+
+                                             repr(obj)[:LOG_OBJ_LIMIT])
     
     def __call__(self, eName, obj):
         if self.cases.has_key(eName):
@@ -115,6 +122,7 @@ class MozMill(object):
 
         self.passes = [] ; self.fails = [] ; self.skipped = []
         self.alltests = []
+        self.attachments = {}
 
         self.persisted = {}
         self.endRunnerCalled = False
@@ -196,6 +204,8 @@ class MozMill(object):
         ''' transfer persisted data '''
         frame.persisted = self.persisted
 
+        frame.reportingConfig = dict(reporting=(report != False))
+
         if os.path.isdir(test):
             frame.runTestDirectory(test, False, self.libdirs)
         else:
@@ -209,12 +219,27 @@ class MozMill(object):
 
         # Give a second for any callbacks to finish.
         sleep(1)
-        
+    
+    def _couch_normalize(self, obj):
+        """
+        Walk obj and its children looking for _attachments entries and merging
+        them into our single attachments object.
+        """
+        if "_attachments" in obj:
+            self.attachments.update(obj["_attachments"])
+            del obj["_attachments"]
+        for key, value in obj.items():
+            if type(value) == dict:
+                obj[key] = self._couch_normalize(value)
+            elif type(value) == list:
+                obj[key] == map(lambda x: self._couch_normalize(x), value)
+        return obj
+
     def endTest_listener(self, test):
         # Reset our Zombie Counter because we are still active
         self.zombieDetector.resetTimer()
 
-        self.alltests.append(test)
+        self.alltests.append(self._couch_normalize(test))
         if test.get('skipped', False):
             print "Test Skipped : %s | %s" % (test['name'], test.get('skipped_reason', ''))
             self.skipped.append(test)
@@ -265,15 +290,25 @@ class MozMill(object):
                    'starttime' : starttime, 
                    'endtime' :endtime,
                    'testPath' : test,
-                   'tests' : self.alltests
+                   'tests' : self.alltests,
+                   '_attachments': self.attachments,
                   }
         results.update(app_info)
         results['sysinfo'] = self.get_sysinfo()
         return results
 
     def send_report(self, results, report_url):
-        import httplib2
+        import httplib2, urlparse
         http = httplib2.Http()
+        # Attempt to split out the credentials in a form httplib2 can use if
+        #  the url is of the form: username:password@host:port
+        url = urlparse.urlparse(report_url)
+        if url.username:
+            http.add_credentials(url.username, url.password)
+            mutable_bits = list(url)
+            mutable_bits[1] = (url.port and ("%s:%d" % (url.hostname, url.port)) 
+                               or url.hostname)
+            report_url = urlparse.urlunparse(mutable_bits)
         response, content = http.request(report_url, 'POST', body=json.dumps(results))
 
     def stop(self, timeout=10):
